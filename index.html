@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ลงทะเบียนผู้บริจาคเลือด</title>
+<script src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
+<style>
+  :root { --bg:#fdf5f5; --card:#fff; --text:#2b2b2b; --muted:#777; --red:#c62828; --line:#e5d3d3; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#1b1414; --card:#271c1c; --text:#f1e8e8; --muted:#b9a8a8; --red:#ef5350; --line:#443333; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:16px; background:var(--bg); color:var(--text);
+         font-family:"Sarabun","Noto Sans Thai",system-ui,sans-serif; }
+  .card { max-width:440px; margin:0 auto; background:var(--card); border-radius:16px;
+          padding:24px; box-shadow:0 2px 12px rgba(0,0,0,.08); }
+  h1 { font-size:1.35rem; margin:0 0 4px; color:var(--red); }
+  p.sub { margin:0 0 20px; color:var(--muted); font-size:.95rem; }
+  label { display:block; font-weight:600; margin:16px 0 6px; }
+  input { width:100%; padding:12px; font-size:1rem; border:1px solid var(--line);
+          border-radius:10px; background:transparent; color:inherit; }
+  input:focus { outline:2px solid var(--red); border-color:transparent; }
+  .hint { color:var(--muted); font-size:.85rem; margin-top:4px; }
+  button { width:100%; margin-top:24px; padding:14px; font-size:1.05rem; font-weight:600;
+           border:0; border-radius:10px; background:var(--red); color:#fff; cursor:pointer; }
+  button:disabled { opacity:.6; cursor:default; }
+  .err { color:var(--red); margin-top:12px; min-height:1.2em; font-size:.9rem; }
+  .hidden { display:none; }
+  .ok { text-align:center; }
+  .ok .big { font-size:3rem; }
+  .due { font-size:1.2rem; font-weight:700; color:var(--red); }
+</style>
+</head>
+<body>
+<div class="card">
+  <div id="formView">
+    <h1>🩸 ลงทะเบียนผู้บริจาคเลือด</h1>
+    <p class="sub">กรอกวันที่บริจาคล่าสุด แล้วเราจะเตือนผ่าน LINE เมื่อครบ 3 เดือน</p>
+
+    <label for="name">ชื่อ</label>
+    <input id="name" autocomplete="name" placeholder="ชื่อ-นามสกุล">
+
+    <label for="date">วันที่บริจาคเลือดล่าสุด</label>
+    <input id="date" type="date">
+    <div class="hint">ยังไม่เคยบริจาค? เลือกวันนี้ได้เลย ระบบจะนับ 3 เดือนจากวันที่เลือก</div>
+
+    <button id="submit" disabled>กำลังเชื่อมต่อ LINE…</button>
+    <div class="err" id="err"></div>
+  </div>
+
+  <div id="doneView" class="ok hidden">
+    <div class="big">✅</div>
+    <h1>ลงทะเบียนสำเร็จ</h1>
+    <p class="sub">เราส่งข้อความยืนยันไปที่ LINE ของคุณแล้ว</p>
+    <p>ครบกำหนดบริจาคครั้งต่อไป</p>
+    <p class="due" id="dueText"></p>
+    <button id="closeBtn">ปิดหน้านี้</button>
+  </div>
+</div>
+
+<script>
+/* ===== ตั้งค่า 2 ค่านี้ ===== */
+const LIFF_ID = 'ใส่ LIFF ID ที่นี่';            // เช่น 1234567890-AbCdEfGh
+const API_URL = 'ใส่ Web app URL ของ Apps Script'; // ลงท้ายด้วย /exec
+/* ========================= */
+
+const $ = id => document.getElementById(id);
+const THAI_MONTHS = ['ม.ค.','ก.พ.','มี.ค.','เม.ย.','พ.ค.','มิ.ย.','ก.ค.','ส.ค.','ก.ย.','ต.ค.','พ.ย.','ธ.ค.'];
+
+function thaiDate(d) {
+  return d.getDate() + ' ' + THAI_MONTHS[d.getMonth()] + ' ' + (d.getFullYear() + 543);
+}
+
+function todayISO() {
+  const d = new Date();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return d.getFullYear() + '-' + m + '-' + day;
+}
+
+async function main() {
+  $('date').max = todayISO();
+  $('date').value = todayISO();
+  try {
+    await liff.init({ liffId: LIFF_ID });
+    if (!liff.isLoggedIn()) { liff.login(); return; }
+    const profile = await liff.getProfile();
+    if (!$('name').value) $('name').value = profile.displayName || '';
+    $('submit').disabled = false;
+    $('submit').textContent = 'ลงทะเบียน';
+  } catch (e) {
+    $('err').textContent = 'เชื่อมต่อ LINE ไม่สำเร็จ: ' + e.message;
+    $('submit').textContent = 'เชื่อมต่อไม่ได้';
+  }
+}
+
+$('submit').addEventListener('click', async () => {
+  const name = $('name').value.trim();
+  const date = $('date').value;
+  $('err').textContent = '';
+  if (!name) { $('err').textContent = 'กรุณากรอกชื่อ'; return; }
+  if (!date) { $('err').textContent = 'กรุณาเลือกวันที่บริจาคล่าสุด'; return; }
+  if (date > todayISO()) { $('err').textContent = 'วันที่ต้องไม่เป็นอนาคต'; return; }
+
+  $('submit').disabled = true;
+  $('submit').textContent = 'กำลังบันทึก…';
+  try {
+    // ใช้ text/plain เพื่อเลี่ยง CORS preflight ของ Apps Script
+    const res = await fetch(API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+      body: JSON.stringify({
+        action: 'register',
+        accessToken: liff.getAccessToken(),
+        name, date
+      })
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || 'บันทึกไม่สำเร็จ');
+
+    const [y, m, d] = date.split('-').map(Number);
+    const due = new Date(y, m - 1, d);
+    due.setMonth(due.getMonth() + 3);
+    $('dueText').textContent = thaiDate(due);
+    $('formView').classList.add('hidden');
+    $('doneView').classList.remove('hidden');
+  } catch (e) {
+    $('err').textContent = 'เกิดข้อผิดพลาด: ' + e.message;
+    $('submit').disabled = false;
+    $('submit').textContent = 'ลงทะเบียน';
+  }
+});
+
+$('closeBtn').addEventListener('click', () => {
+  if (liff.isInClient()) liff.closeWindow(); else window.close();
+});
+
+main();
+</script>
+</body>
+</html>
